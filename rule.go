@@ -2,6 +2,7 @@ package netrouter
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -15,7 +16,7 @@ type Rule struct {
 	pattern string
 	method  HttpMethod
 	h       http.HandlerFunc
-	params  RuleContext
+	ctx     RuleContext
 }
 
 // Match - проверка, обрабатывает ли правило ресурс, на который указывает URL
@@ -30,8 +31,9 @@ func (rule Rule) Match(req *http.Request) bool {
 	if matches != nil {
 		paramNames := re.SubexpNames()
 		for index, paramValue := range matches[1:] {
-			rule.params[paramNames[index]] = paramValue
+			rule.ctx[paramNames[index]] = paramValue
 		}
+		fmt.Println(rule.ctx)
 		return true
 	}
 	return false
@@ -46,10 +48,10 @@ func (r *Rule) Validate() error {
 	if err != nil {
 		return errors.New("wrong formed rule pattern")
 	}
-	if r.params == nil {
+	if r.ctx == nil {
 		matched, _ := regexp.MatchString(r.pattern, regexp.QuoteMeta(`{\S}`))
 		if matched {
-			r.params = make(map[string]string)
+			r.ctx = make(map[string]string)
 		}
 	}
 	if r.method != HttpGetMethod &&
