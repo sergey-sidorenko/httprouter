@@ -2,7 +2,6 @@ package netrouter
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -24,16 +23,13 @@ func (rule Rule) Match(req *http.Request) bool {
 	if req.Method != string(rule.method) {
 		return false
 	}
-	re, _ := regexp.Compile(regexp.QuoteMeta(`{(\S)}`))
-	pattern := re.ReplaceAllString(rule.pattern, `(?<$1>)`)
-	re, _ = regexp.Compile(pattern)
+	re, _ := regexp.Compile(rule.pattern)
 	matches := re.FindStringSubmatch(req.URL.String())
 	if matches != nil {
-		paramNames := re.SubexpNames()
+		paramNames := re.SubexpNames()[1:]
 		for index, paramValue := range matches[1:] {
 			rule.ctx[paramNames[index]] = paramValue
 		}
-		fmt.Println(rule.ctx)
 		return true
 	}
 	return false
@@ -47,12 +43,6 @@ func (r *Rule) Validate() error {
 	_, err := regexp.Compile(r.pattern)
 	if err != nil {
 		return errors.New("wrong formed rule pattern")
-	}
-	if r.ctx == nil {
-		matched, _ := regexp.MatchString(r.pattern, regexp.QuoteMeta(`{\S}`))
-		if matched {
-			r.ctx = make(map[string]string)
-		}
 	}
 	if r.method != HttpGetMethod &&
 		r.method != HttpPostMethod &&
@@ -71,7 +61,9 @@ func (r Rule) Handle(w http.ResponseWriter, rq *http.Request) {
 
 // Создание нового правила - валидация правила
 func NewRule(pattern string, method HttpMethod, h http.HandlerFunc) *Rule {
-	r := &Rule{pattern, method, h, make(map[string]string)}
+	re, _ := regexp.Compile(`{(\S+)}`)
+	pattern = re.ReplaceAllString(pattern, `(?P<$1>\S+)`)
+	r := &Rule{pattern, method, h, make(RuleContext)}
 	err := r.Validate()
 	if err != nil {
 		return nil
