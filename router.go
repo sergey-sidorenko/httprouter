@@ -14,10 +14,18 @@ func (r *Router) AddRule(rule *Rule) {
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var rule *Rule
 	for _, curRule := range r.rules {
-		if rule.Match(req) {
+		if curRule.Match(req) {
 			rule = curRule
 			break
 		}
 	}
-	rule.Handle(w, req)
+	if rule != nil {
+		rule.Handle(w, req)
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("Requested page not found!"))
+	}
+}
+func NewRouter() *Router {
+	return &Router{make([]*Rule, 0)}
 }
