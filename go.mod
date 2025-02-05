@@ -1,3 +1,3 @@
-module github.com/sergey-sidorenko/netrouter
+module github.com/sergey-sidorenko/httprouter
 
 go 1.21.1

@@ -1,4 +1,4 @@
-package netrouter
+package httprouter
 
 type HttpMethod string
 
