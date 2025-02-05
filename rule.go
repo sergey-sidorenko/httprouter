@@ -7,11 +7,15 @@ import (
 	"strings"
 )
 
+// RuleContext - context of rule
+type RuleContext map[string]string
+
+// Rule - rule for url-to-action routing
 type Rule struct {
 	pattern string
 	method  HttpMethod
 	h       http.HandlerFunc
-	params  map[string]string
+	params  RuleContext
 }
 
 // Match - проверка, обрабатывает ли правило ресурс, на который указывает URL
