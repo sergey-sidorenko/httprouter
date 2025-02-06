@@ -5,11 +5,12 @@ import (
 )
 
 type Router struct {
-	rules []*Rule
+	rules map[string]*Rule
 }
 
 func (r *Router) AddRule(rule *Rule) {
-	r.rules = append(r.rules, rule)
+	key := rule.pattern + string(rule.method)
+	r.rules[key] = rule
 }
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var rule *Rule
@@ -27,5 +28,5 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 func NewRouter() *Router {
-	return &Router{make([]*Rule, 0)}
+	return &Router{make(map[string]*Rule, 0)}
 }
