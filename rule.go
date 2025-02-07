@@ -13,14 +13,14 @@ type RuleContext map[string]string
 // Rule - rule for url-to-action routing
 type Rule struct {
 	pattern string
-	method  HttpMethod
+	method  string
 	h       http.HandlerFunc
 	ctx     RuleContext
 }
 
 // Match - проверка, обрабатывает ли правило ресурс, на который указывает URL
 func (rule Rule) Match(req *http.Request) bool {
-	if req.Method != string(rule.method) {
+	if req.Method != rule.method {
 		return false
 	}
 	re, _ := regexp.Compile(rule.pattern)
@@ -44,14 +44,14 @@ func (r *Rule) Validate() error {
 	if err != nil {
 		return errors.New("wrong formed rule pattern")
 	}
-	if r.method != HttpGetMethod &&
-		r.method != HttpPostMethod &&
-		r.method != HttpPutMethod &&
-		r.method != HttpPatchMethod &&
-		r.method != HttpDeleteMethod &&
-		r.method != HttpHeadMethod &&
-		r.method != HttpOptionsMethod {
-		r.method = HttpGetMethod
+	if r.method != "GET" &&
+		r.method != "POST" &&
+		r.method != "PUT" &&
+		r.method != "PATCH" &&
+		r.method != "DELETE" &&
+		r.method != "HEAD" &&
+		r.method != "OPTIONS" {
+		r.method = "GET"
 	}
 	return nil
 }
@@ -60,7 +60,7 @@ func (r Rule) Handle(w http.ResponseWriter, rq *http.Request) {
 }
 
 // Создание нового правила - валидация правила
-func NewRule(pattern string, method HttpMethod, h http.HandlerFunc) *Rule {
+func NewRule(pattern string, method string, h http.HandlerFunc) *Rule {
 	re, _ := regexp.Compile(`{(\S+)}`)
 	pattern = re.ReplaceAllString(pattern, `(?P<$1>\S+)`)
 	r := &Rule{pattern, method, h, make(RuleContext)}
