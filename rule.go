@@ -2,10 +2,45 @@ package httprouter
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
 )
+
+const (
+	MatchErrorCodeWrongMethod int = iota + 1
+	MatchErrorCodeNoMatch
+	MatchErrorCodeWrongQueryParam
+)
+
+// RuleMatchError returns an error during matching.
+type RuleMatchError struct {
+	Code        int
+	QueryParams map[string]string
+}
+
+var (
+	MatchErrorWrongMethod = &RuleMatchError{MatchErrorCodeWrongMethod, nil}
+	MatchErrorNoMatch     = &RuleMatchError{MatchErrorCodeNoMatch, nil}
+)
+
+func (e RuleMatchError) Error() string {
+	switch e.Code {
+	case MatchErrorCodeWrongMethod:
+		return "http method doesnt math the rule"
+	case MatchErrorCodeNoMatch:
+		return "no match"
+	case MatchErrorCodeWrongQueryParam:
+		var qp string
+		for pn, et := range e.QueryParams {
+			qp += fmt.Sprintf("%s: %s", pn, et)
+		}
+		return fmt.Sprintf("query param %s does not math the rule method doesnt math the rule", qp)
+	default:
+		return ""
+	}
+}
 
 // RuleContext - context of rule
 type RuleContext map[string]string
@@ -15,24 +50,28 @@ type Rule struct {
 	pattern string
 	method  string
 	h       http.HandlerFunc
-	ctx     RuleContext
 }
 
 // Match - проверка, обрабатывает ли правило ресурс, на который указывает URL
-func (rule Rule) Match(req *http.Request) bool {
+func (rule Rule) Match(req *http.Request) (RuleContext, error) {
+	var ctx RuleContext
 	if req.Method != rule.method {
-		return false
+		return ctx, fmt.Errorf("%w", MatchErrorWrongMethod)
 	}
 	re, _ := regexp.Compile(rule.pattern)
-	matches := re.FindStringSubmatch(req.URL.String())
+	var matches []string = re.FindStringSubmatch(req.URL.String())
 	if matches != nil {
-		paramNames := re.SubexpNames()[1:]
-		for index, paramValue := range matches[1:] {
-			rule.ctx[paramNames[index]] = paramValue
+		var paramNames []string = re.SubexpNames()[1:]
+		if len(paramNames) > 0 {
+			ctx = make(RuleContext)
+			for index, paramValue := range paramNames {
+				ctx[paramNames[index]] = paramValue
+
+			}
 		}
-		return true
+		return ctx, nil
 	}
-	return false
+	return ctx, fmt.Errorf("%w", MatchErrorNoMatch)
 }
 
 // Validate - валидация правила
@@ -55,7 +94,14 @@ func (r *Rule) Validate() error {
 	}
 	return nil
 }
-func (r Rule) Handle(w http.ResponseWriter, rq *http.Request) {
+
+// SetPattern - sets pattern
+func (r *Rule) SetPattern(p string) {
+	r.pattern = p
+}
+
+// Handle - shandles client network request
+func (r Rule) Handle(w http.ResponseWriter, rq *http.Request, ctx RuleContext) {
 	r.h(w, rq)
 }
 
@@ -63,7 +109,7 @@ func (r Rule) Handle(w http.ResponseWriter, rq *http.Request) {
 func NewRule(pattern string, method string, h http.HandlerFunc) *Rule {
 	re, _ := regexp.Compile(`{(\S+)}`)
 	pattern = re.ReplaceAllString(pattern, `(?P<$1>\S+)`)
-	r := &Rule{pattern, method, h, make(RuleContext)}
+	r := &Rule{pattern, method, h}
 	err := r.Validate()
 	if err != nil {
 		return nil
