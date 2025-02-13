@@ -97,7 +97,7 @@ func (rule Rule) Match(req *http.Request) (RuleContext, error) {
 	return ctx, fmt.Errorf("%w", MatchErrorNoMatch)
 }
 
-// Validate - валидация правила
+// Validate - validates the rule
 func (r *Rule) Validate() error {
 	var trims = " \t\b\r\n"
 	r.method = strings.Trim(r.method, trims)
@@ -108,6 +108,30 @@ func (r *Rule) Validate() error {
 	}
 	if r.pattern[0] != '/' {
 		r.pattern = "/" + r.pattern
+	}
+	rePattern := `\(.*?\|.*?\)`
+	re, _ := regexp.Compile(rePattern)
+	if re != nil {
+		r.pattern = re.ReplaceAllStringFunc(r.pattern, func(s string) string {
+			s = strings.Trim(s, "()")
+			variants := strings.Split(s, "|")
+			slices.Sort(variants)
+			return fmt.Sprintf("(%s)", strings.Join(variants, "|"))
+		})
+	}
+	re, _ = regexp.Compile(`<(\S+)>:?([^\s\/]*)`)
+	if re != nil {
+		// clear all named groups with empty regexp expressions
+		reEmptyNamedGroups, _ := regexp.Compile(`(<\S+>):?\s*((?:$|\/).*)`)
+		if reEmptyNamedGroups != nil {
+			r.pattern = reEmptyNamedGroups.ReplaceAllString(r.pattern, `$1:\S+$2`)
+		}
+		// make all groups in pattern non-capturing
+		reParentesses, _ := regexp.Compile(`(<\S+>:)\(([^\s\/]*)\)`)
+		if reParentesses != nil {
+			r.pattern = reParentesses.ReplaceAllString(r.pattern, `$1(?:$2)`)
+		}
+		r.pattern = re.ReplaceAllString(r.pattern, `(?P<$1>$2)(?:$|\/)`)
 	}
 	_, err := regexp.Compile(r.pattern)
 	if err != nil {
@@ -137,21 +161,6 @@ func (r Rule) Handle(w http.ResponseWriter, rq *http.Request, ctx RuleContext) {
 
 // Создание нового правила - валидация правила
 func NewRule(pattern string, method string, h http.HandlerFunc) (*Rule, error) {
-
-	rePattern := `{.*?\|.*?}`
-	re, _ := regexp.Compile(rePattern)
-	if re != nil {
-		pattern = re.ReplaceAllStringFunc(pattern, func(s string) string {
-			s = strings.Trim(s, "{}")
-			variants := strings.Split(s, "|")
-			slices.Sort(variants)
-			return fmt.Sprintf("{%s}", strings.Join(variants, "|"))
-		})
-	}
-	re, _ = regexp.Compile(`<(\S+)>`)
-	if re != nil {
-		pattern = re.ReplaceAllString(pattern, `(?P<$1>\S+)`)
-	}
 	r := &Rule{pattern, method, h}
 	err := r.Validate()
 	if err != nil {
