@@ -12,6 +12,7 @@ const (
 	MatchErrorCodeWrongMethod int = iota + 1
 	MatchErrorCodeNoMatch
 	MatchErrorCodeWrongQueryParam
+	ValidationErrorCodeWrongPattern int = iota + 1
 )
 
 // RuleMatchError returns an error during matching.
@@ -20,9 +21,15 @@ type RuleMatchError struct {
 	QueryParams map[string]string
 }
 
+// RuleValidationError returns an error during rule validation.
+type RuleValidationError struct {
+	Code int
+}
+
 var (
-	MatchErrorWrongMethod = &RuleMatchError{MatchErrorCodeWrongMethod, nil}
-	MatchErrorNoMatch     = &RuleMatchError{MatchErrorCodeNoMatch, nil}
+	MatchErrorWrongMethod       = &RuleMatchError{MatchErrorCodeWrongMethod, nil}
+	MatchErrorNoMatch           = &RuleMatchError{MatchErrorCodeNoMatch, nil}
+	ValidationErrorWrongPattern = &RuleValidationError{ValidationErrorCodeWrongPattern}
 )
 
 func (e RuleMatchError) Error() string {
@@ -39,6 +46,14 @@ func (e RuleMatchError) Error() string {
 		return fmt.Sprintf("query param %s does not math the rule method doesnt math the rule", qp)
 	default:
 		return ""
+	}
+}
+func (e RuleValidationError) Error() string {
+	switch e.Code {
+	case ValidationErrorCodeWrongPattern:
+		return "wrong formed rule pattern"
+	default:
+		return "unknown validation error"
 	}
 }
 
@@ -81,7 +96,7 @@ func (r *Rule) Validate() error {
 	}
 	_, err := regexp.Compile(r.pattern)
 	if err != nil {
-		return errors.New("wrong formed rule pattern")
+		return fmt.Errorf("%w: %s", ValidationErrorWrongPattern, err.Error())
 	}
 	if r.method != "GET" &&
 		r.method != "POST" &&
@@ -106,13 +121,13 @@ func (r Rule) Handle(w http.ResponseWriter, rq *http.Request, ctx RuleContext) {
 }
 
 // Создание нового правила - валидация правила
-func NewRule(pattern string, method string, h http.HandlerFunc) *Rule {
-	re, _ := regexp.Compile(`{(\S+)}`)
+func NewRule(pattern string, method string, h http.HandlerFunc) (*Rule, error) {
+	re, _ := regexp.Compile(`<(\S+)>`)
 	pattern = re.ReplaceAllString(pattern, `(?P<$1>\S+)`)
 	r := &Rule{pattern, method, h}
 	err := r.Validate()
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return r
+	return r, nil
 }

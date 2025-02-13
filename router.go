@@ -44,7 +44,6 @@ func (r *Router) AddRule(rule *Rule) {
 	if re != nil {
 		pattern = re.ReplaceAllStringFunc(pattern, func(s string) string {
 			s = strings.Trim(s, "{}")
-			fmt.Println(s)
 			variants := strings.Split(s, "|")
 			slices.Sort(variants)
 			return fmt.Sprintf("{%s}", strings.Join(variants, "|"))
