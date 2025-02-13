@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
-	"slices"
 	"strings"
 	"sync"
 )
@@ -38,19 +36,7 @@ func (r *Router) findRuleElement(pattern string, method string) *list.Element {
 
 // AddRule - adds a rule
 func (r *Router) AddRule(rule *Rule) {
-	var pattern string = rule.pattern
-	rePattern := `{.*?\|.*?}`
-	re, _ := regexp.Compile(rePattern)
-	if re != nil {
-		pattern = re.ReplaceAllStringFunc(pattern, func(s string) string {
-			s = strings.Trim(s, "{}")
-			variants := strings.Split(s, "|")
-			slices.Sort(variants)
-			return fmt.Sprintf("{%s}", strings.Join(variants, "|"))
-		})
-		rule.SetPattern(pattern)
-	}
-	var existEl *list.Element = r.findRuleElement(pattern, rule.method)
+	var existEl *list.Element = r.findRuleElement(rule.pattern, rule.method)
 	r.rlmutex.Lock()
 	defer r.rlmutex.Unlock()
 	if existEl != nil {

@@ -1,10 +1,10 @@
 package httprouter
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -12,7 +12,8 @@ const (
 	MatchErrorCodeWrongMethod int = iota + 1
 	MatchErrorCodeNoMatch
 	MatchErrorCodeWrongQueryParam
-	ValidationErrorCodeWrongPattern int = iota + 1
+	RuleValidationErrorCodeWrongPattern int = iota + 1
+	RuleValidationErrorCodeWrongField
 )
 
 // RuleMatchError returns an error during matching.
@@ -23,13 +24,14 @@ type RuleMatchError struct {
 
 // RuleValidationError returns an error during rule validation.
 type RuleValidationError struct {
-	Code int
+	Code   int
+	Fields map[string]string
 }
 
 var (
-	MatchErrorWrongMethod       = &RuleMatchError{MatchErrorCodeWrongMethod, nil}
-	MatchErrorNoMatch           = &RuleMatchError{MatchErrorCodeNoMatch, nil}
-	ValidationErrorWrongPattern = &RuleValidationError{ValidationErrorCodeWrongPattern}
+	MatchErrorWrongMethod           = &RuleMatchError{MatchErrorCodeWrongMethod, nil}
+	MatchErrorNoMatch               = &RuleMatchError{MatchErrorCodeNoMatch, nil}
+	RuleValidationErrorWrongPattern = &RuleValidationError{RuleValidationErrorCodeWrongPattern, nil}
 )
 
 func (e RuleMatchError) Error() string {
@@ -50,8 +52,14 @@ func (e RuleMatchError) Error() string {
 }
 func (e RuleValidationError) Error() string {
 	switch e.Code {
-	case ValidationErrorCodeWrongPattern:
+	case RuleValidationErrorCodeWrongPattern:
 		return "wrong formed rule pattern"
+	case RuleValidationErrorCodeWrongField:
+		var qp string
+		for fn, err := range e.Fields {
+			qp += fmt.Sprintf("[%s]: %s", fn, err)
+		}
+		return fmt.Sprintf("these fields of the rule filled wrong: %s", qp)
 	default:
 		return "unknown validation error"
 	}
@@ -91,12 +99,19 @@ func (rule Rule) Match(req *http.Request) (RuleContext, error) {
 
 // Validate - валидация правила
 func (r *Rule) Validate() error {
-	if len(strings.Trim(r.pattern, " \t\b\r\n")) == 0 {
-		return errors.New("attempted to add a rule that was not passed the validation")
+	var trims = " \t\b\r\n"
+	r.method = strings.Trim(r.method, trims)
+	r.pattern = strings.Trim(r.pattern, trims)
+	if len(r.pattern) == 0 {
+		ruleValidationError := &RuleValidationError{RuleValidationErrorCodeWrongField, map[string]string{"pattern": "empty"}}
+		return fmt.Errorf("%w", ruleValidationError)
+	}
+	if r.pattern[0] != '/' {
+		r.pattern = "/" + r.pattern
 	}
 	_, err := regexp.Compile(r.pattern)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ValidationErrorWrongPattern, err.Error())
+		return fmt.Errorf("%w: %s", RuleValidationErrorWrongPattern, err.Error())
 	}
 	if r.method != "GET" &&
 		r.method != "POST" &&
@@ -122,8 +137,21 @@ func (r Rule) Handle(w http.ResponseWriter, rq *http.Request, ctx RuleContext) {
 
 // Создание нового правила - валидация правила
 func NewRule(pattern string, method string, h http.HandlerFunc) (*Rule, error) {
-	re, _ := regexp.Compile(`<(\S+)>`)
-	pattern = re.ReplaceAllString(pattern, `(?P<$1>\S+)`)
+
+	rePattern := `{.*?\|.*?}`
+	re, _ := regexp.Compile(rePattern)
+	if re != nil {
+		pattern = re.ReplaceAllStringFunc(pattern, func(s string) string {
+			s = strings.Trim(s, "{}")
+			variants := strings.Split(s, "|")
+			slices.Sort(variants)
+			return fmt.Sprintf("{%s}", strings.Join(variants, "|"))
+		})
+	}
+	re, _ = regexp.Compile(`<(\S+)>`)
+	if re != nil {
+		pattern = re.ReplaceAllString(pattern, `(?P<$1>\S+)`)
+	}
 	r := &Rule{pattern, method, h}
 	err := r.Validate()
 	if err != nil {
