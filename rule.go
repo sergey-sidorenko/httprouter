@@ -100,15 +100,13 @@ func (rule Rule) Match(req *http.Request) (RuleContext, error) {
 // Validate - validates the rule
 func (r *Rule) Validate() error {
 	var trims = " \t\b\r\n"
-	r.method = strings.Trim(r.method, trims)
 	r.pattern = strings.Trim(r.pattern, trims)
 	if len(r.pattern) == 0 {
-		ruleValidationError := &RuleValidationError{RuleValidationErrorCodeWrongField, map[string]string{"pattern": "empty"}}
-		return fmt.Errorf("%w", ruleValidationError)
-	}
-	if r.pattern[0] != '/' {
+		r.pattern = "/"
+	} else if r.pattern[0] != '/' {
 		r.pattern = "/" + r.pattern
 	}
+	// sorting alternative variants in OR clause of regexp
 	rePattern := `\(.*?\|.*?\)`
 	re, _ := regexp.Compile(rePattern)
 	if re != nil {
@@ -137,6 +135,7 @@ func (r *Rule) Validate() error {
 	if err != nil {
 		return fmt.Errorf("%w: %s", RuleValidationErrorWrongPattern, err.Error())
 	}
+	r.method = strings.Trim(r.method, trims)
 	if r.method != "GET" &&
 		r.method != "POST" &&
 		r.method != "PUT" &&
@@ -154,7 +153,7 @@ func (r *Rule) SetPattern(p string) {
 	r.pattern = p
 }
 
-// Handle - shandles client network request
+// Handle - handles client network request
 func (r Rule) Handle(w http.ResponseWriter, rq *http.Request, ctx RuleContext) {
 	r.h(w, rq)
 }
