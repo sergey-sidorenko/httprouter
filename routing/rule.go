@@ -1,8 +1,7 @@
-package httprouter
+package routing
 
 import (
 	"fmt"
-	"net/http"
 	"regexp"
 	"slices"
 	"strings"
@@ -65,36 +64,35 @@ func (e RuleValidationError) Error() string {
 	}
 }
 
-// RuleContext - context of rule
-type RuleContext map[string]string
+// PathParams - context of rule
+type PathParams map[string]string
 
 // Rule - rule for url-to-action routing
 type Rule struct {
 	pattern string
 	method  string
-	h       http.HandlerFunc
 }
 
 // Match - проверка, обрабатывает ли правило ресурс, на который указывает URL
-func (rule Rule) Match(req *http.Request) (RuleContext, error) {
-	var ctx RuleContext
+func (rule *Rule) Match(req *Request) (PathParams, error) {
+	var params PathParams
 	if req.Method != rule.method {
-		return ctx, fmt.Errorf("%w", MatchErrorWrongMethod)
+		return params, fmt.Errorf("%w", MatchErrorWrongMethod)
 	}
 	re, _ := regexp.Compile(rule.pattern)
 	var matches []string = re.FindStringSubmatch(req.URL.String())
 	if matches != nil {
 		var paramNames []string = re.SubexpNames()[1:]
 		if len(paramNames) > 0 {
-			ctx = make(RuleContext)
+			params = make(PathParams)
 			for index, paramValue := range paramNames {
-				ctx[paramNames[index]] = paramValue
+				params[paramNames[index]] = paramValue
 
 			}
 		}
-		return ctx, nil
+		return params, nil
 	}
-	return ctx, fmt.Errorf("%w", MatchErrorNoMatch)
+	return params, fmt.Errorf("%w", MatchErrorNoMatch)
 }
 
 // Validate - validates the rule
@@ -153,17 +151,22 @@ func (r *Rule) SetPattern(p string) {
 	r.pattern = p
 }
 
-// Handle - handles client network request
-func (r Rule) Handle(w http.ResponseWriter, rq *http.Request, ctx RuleContext) {
-	r.h(w, rq)
-}
-
 // Создание нового правила - валидация правила
-func NewRule(pattern string, method string, h http.HandlerFunc) (*Rule, error) {
-	r := &Rule{pattern, method, h}
+func NewRule(pattern string, method string) (*Rule, error) {
+	r := &Rule{pattern, method}
 	err := r.Validate()
 	if err != nil {
 		return nil, err
 	}
 	return r, nil
+}
+
+// Pattern - returns pattern
+func (r Rule) Pattern() string {
+	return r.pattern
+}
+
+// Method - returns http request method that corresponds to the rule
+func (r Rule) Method() string {
+	return r.method
 }
